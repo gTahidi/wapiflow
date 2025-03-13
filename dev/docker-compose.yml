@@ -31,7 +31,7 @@ services:
     build:
       context: ../
       dockerfile: dev/dev.Dockerfile
-    command: [ "make", "dev-frontend" ]
+    command: make dev-frontend
     ports:
       - "3000:3000"
     environment:
@@ -48,7 +48,8 @@ services:
     build:
       context: ../
       dockerfile: dev/dev.Dockerfile
-    command: [ "make", "dev-backend-docker" ]
+    # We'll run the database migrations and then start the backend in dev mode
+    command: sh -c "./wapikit --install --idempotent --yes --config dev/config.toml && make dev-backend-docker"
     ports:
       - "8000:8000"
       - "8081:8081"
@@ -57,13 +58,14 @@ services:
       - redis
     volumes:
       - ../:/app
-      - $GOPATH/pkg/mod/cache:/go/pkg/mod/cache
+      - go-modules:/go/pkg/mod
     networks:
       - wapikit-dev
 
 volumes:
   wapikit-dev-db:
   wapikit-dev-redis:
+  go-modules:
 
 
 networks:
