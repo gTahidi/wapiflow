@@ -10,9 +10,15 @@ export const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
 export const AUTH_TOKEN_LS = '__auth_token'
 
 export function getBackendUrl() {
-	if (IS_DEVELOPMENT) {
-		return 'http://127.0.0.1:8000/api'
+	// When running in Docker, use the container name
+	if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+		// For local development outside Docker, use the local address
+		return 'http://localhost:8000'
+	} else if (process.env.NEXT_PUBLIC_API_URL) {
+		// Use environment variable if provided
+		return process.env.NEXT_PUBLIC_API_URL
 	} else {
+		// Default to relative path for Next.js proxy
 		return '/api'
 	}
 }

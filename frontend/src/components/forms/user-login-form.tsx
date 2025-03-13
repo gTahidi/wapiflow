@@ -1,4 +1,8 @@
 'use client'
+
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { Button } from '~/components/ui/button'
 import {
 	Form,
@@ -9,111 +13,170 @@ import {
 	FormMessage
 } from '~/components/ui/form'
 import { Input } from '~/components/ui/input'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { useLogin } from '~/generated'
-import { useLocalStorage } from '~/hooks/use-local-storage'
-import { AUTH_TOKEN_LS } from '~/constants'
+import { useState, useCallback } from 'react'
+import { useAuthState } from '~/hooks/use-auth-state'
+import { useMutation } from '@tanstack/react-query'
+import customInstance from '~/utils/api-client'
+import { toast } from 'sonner'
+
+// Define the login response type
+interface LoginResponse {
+	token: string
+	user: {
+		id: string
+		email: string
+		name?: string
+	}
+}
 
 const formSchema = z.object({
-	email: z.string().email({ message: 'Enter a valid email address' }),
-	password: z.string().min(6, { message: 'Password must be at least 6 characters' })
+	email: z.string().email({
+		message: 'Please enter a valid email.'
+	}),
+	password: z.string().min(8, {
+		message: 'Password must be at least 8 characters.'
+	})
 })
 
-type UserFormValue = z.infer<typeof formSchema>
-
 export default function UserLoginForm() {
-	const setAuthToken = useLocalStorage<string | undefined>(AUTH_TOKEN_LS, undefined)[1]
+	const { setAuthToken, authState } = useAuthState()
+	const [isLoading, setIsLoading] = useState(false)
 
-	const [loading] = useState(false)
+	// Use react-query for login mutation
+	const loginMutation = useMutation({
+		mutationFn: async (values: z.infer<typeof formSchema>) => {
+			const response = await customInstance<LoginResponse>({
+				url: '/api/auth/login',
+				method: 'POST',
+				data: {
+					username: values.email,
+					password: values.password
+				},
+				publicRoute: true
+			})
 
-	const defaultValues = {
-		email: '',
-		password: ''
-	}
-	const form = useForm<UserFormValue>({
-		resolver: zodResolver(formSchema),
-		defaultValues
+			if (!response?.token) {
+				throw new Error('Invalid response: Missing token')
+			}
+
+			return response
+		},
+		onMutate: () => {
+			setIsLoading(true)
+		},
+		onSuccess: (response) => {
+			try {
+				if (!response?.token) {
+					throw new Error('Invalid response: Missing token')
+				}
+				setAuthToken(response.token)
+				toast.success('Login successful!')
+			} catch (error) {
+				console.error('Error processing login response:', error)
+				setAuthToken(null)
+				toast.error('Error processing login response')
+			}
+		},
+		onError: (error: any) => {
+			console.error('Login error:', error)
+			const errorMessage = error?.response?.data?.message || error?.message || 'Login failed. Please try again.'
+			toast.error(errorMessage)
+			setAuthToken(null)
+		},
+		onSettled: () => {
+			setIsLoading(false)
+		}
 	})
 
-	const mutation = useLogin()
+	const form = useForm<z.infer<typeof formSchema>>({
+		resolver: zodResolver(formSchema),
+		defaultValues: {
+			email: '',
+			password: ''
+		}
+	})
 
-	const onSubmit = async (data: UserFormValue) => {
-		await mutation.mutateAsync(
-			{
-				data: {
-					password: data.password,
-					username: data.email
-				}
-			},
-			{
-				onSuccess: data => {
-					if (data.token) {
-						setAuthToken(data.token)
-						window.location.href = '/dashboard'
-					} else {
-						// something went wrong show error token not found
-					}
-				},
-				onError: error => {
-					console.error(error)
-				}
-			}
-		)
+	async function onSubmit(values: z.infer<typeof formSchema>) {
+		if (isLoading) return
+		loginMutation.mutate(values)
 	}
 
+	// Disable form while loading or if already authenticated
+	const isFormDisabled = isLoading || loginMutation.isLoading || authState.isAuthenticated === true
+
+	// Add dev login helper
+	const handleDevLogin = useCallback(() => {
+		if (process.env.NODE_ENV === 'development') {
+			form.setValue('email', 'dev@wapikit.com')
+			form.setValue('password', 'devuser')
+			onSubmit({
+				email: 'dev@wapikit.com',
+				password: 'devuser'
+			})
+		}
+	}, [form])
+
 	return (
-		<>
-			<Form {...form}>
-				<form
-					onSubmit={form.handleSubmit(onSubmit)}
-					className="flex w-full flex-col gap-2 space-y-2"
-				>
-					<FormField
-						control={form.control}
-						name="email"
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Email</FormLabel>
-								<FormControl>
-									<Input
-										type="email"
-										placeholder="Enter your email..."
-										disabled={loading}
-										{...field}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-
-					<FormField
-						control={form.control}
-						name="password"
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Password</FormLabel>
-								<FormControl>
-									<Input
-										type="password"
-										placeholder="Enter your password..."
-										disabled={loading}
-										{...field}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-
-					<Button disabled={loading} className="ml-auto w-full" type="submit">
-						Sign in
+		<Form {...form}>
+			<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+				<FormField
+					control={form.control}
+					name="email"
+					render={({ field }) => (
+						<FormItem>
+							<FormLabel>Email</FormLabel>
+							<FormControl>
+								<Input 
+									placeholder="email" 
+									{...field} 
+									disabled={isFormDisabled}
+									autoComplete="email"
+								/>
+							</FormControl>
+							<FormMessage />
+						</FormItem>
+					)}
+				/>
+				<FormField
+					control={form.control}
+					name="password"
+					render={({ field }) => (
+						<FormItem>
+							<FormLabel>Password</FormLabel>
+							<FormControl>
+								<Input 
+									type="password" 
+									placeholder="********" 
+									{...field} 
+									disabled={isFormDisabled}
+									autoComplete="current-password"
+								/>
+							</FormControl>
+							<FormMessage />
+						</FormItem>
+					)}
+				/>
+				<div className="space-y-4">
+					<Button 
+						type="submit" 
+						className="w-full" 
+						disabled={isFormDisabled}
+					>
+						{isLoading ? 'Signing in...' : 'Sign in'}
 					</Button>
-				</form>
-			</Form>
-		</>
+					{process.env.NODE_ENV === 'development' && (
+						<Button
+							type="button"
+							variant="outline"
+							className="w-full"
+							onClick={handleDevLogin}
+							disabled={isFormDisabled}
+						>
+							Dev Login
+						</Button>
+					)}
+				</div>
+			</form>
+		</Form>
 	)
 }

@@ -181,37 +181,56 @@ const OnboardingStepClientPage = ({ stepSlug }: { stepSlug: string }) => {
 		data: z.infer<typeof WhatsappBusinessAccountDetailsFormSchema>
 	) {
 		try {
-			if (!currentOrganization) return
+			if (!currentOrganization) {
+				errorNotification({
+					message: 'No organization selected. Please create or select an organization first.'
+				})
+				return
+			}
 
 			const response = await updateWhatsappBusinessAccountDetailsMutation.mutateAsync({
 				data: {
-					businessAccountId: data.whatsappBusinessAccountId,
-					accessToken: data.apiToken
+					businessAccountId: data.businessAccountId,
+					apiKey: data.apiKey,
+					webhookSecret: data.webhookSecret
 				}
 			})
 
-			if (response.accessToken) {
+			if (response) {
 				writeProperty({
 					currentOrganization: {
 						...currentOrganization,
 						whatsappBusinessAccountDetails: {
-							businessAccountId: response.businessAccountId,
-							accessToken: response.accessToken,
-							webhookSecret: response.webhookSecret
+							businessAccountId: data.businessAccountId,
+							apiKey: data.apiKey,
+							webhookSecret: data.webhookSecret
 						}
-					}
+					},
+					onboardingSteps: onboardingSteps.map(step => ({
+						...step,
+						status: step.slug === OnboardingStepsEnum.WhatsappBusinessAccountDetails 
+							? 'complete' 
+							: step.slug === OnboardingStepsEnum.InviteTeamMembers
+								? 'current'
+								: step.status
+					}))
 				})
 
+				successNotification({
+					message: 'WhatsApp Business Account details updated successfully.'
+				})
+
+				// Navigate to next step
 				router.push('/onboarding/invite-team-members')
 			} else {
 				errorNotification({
-					message: 'Error updating WhatsApp Business Account ID'
+					message: 'Failed to update WhatsApp Business Account details.'
 				})
 			}
 		} catch (error) {
-			console.error(error)
+			console.error('Error updating WhatsApp Business Account details:', error)
 			errorNotification({
-				message: 'Error updating WhatsApp Business Account ID'
+				message: 'Failed to update WhatsApp Business Account details. Please try again.'
 			})
 		}
 	}

@@ -97,7 +97,7 @@ func installApp(db *sql.DB, fs stuffbin.FileSystem, prompt, idempotent bool) {
 		os.Exit(1)
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(koa.String("app.default_user_password")), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(koa.String("default_user_password")), bcrypt.DefaultCost)
 	fmt.Println("hashed password: ", string(hashedPassword))
 	if err != nil {
 		panic(err)
@@ -106,9 +106,9 @@ func installApp(db *sql.DB, fs stuffbin.FileSystem, prompt, idempotent bool) {
 	password := string(hashedPassword)
 
 	defaultUser := model.User{
-		Name:      koa.String("app.default_user_name"),
-		Email:     koa.String("app.default_user_email"),
-		Username:  koa.String("app.default_user_username"),
+		Name:      koa.String("default_user_name"),
+		Email:     koa.String("default_user_email"),
+		Username:  koa.String("default_user_username"),
 		Password:  &password,
 		Status:    model.UserAccountStatusEnum_Active,
 		CreatedAt: time.Now(),

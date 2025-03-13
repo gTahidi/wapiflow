@@ -46,8 +46,9 @@ export const OrganizationUpdateFormSchema = z.object({
 })
 
 export const WhatsappBusinessAccountDetailsFormSchema = z.object({
-	whatsappBusinessAccountId: z.string(),
-	apiToken: z.string()
+	businessAccountId: z.string().min(1, { message: 'WhatsApp Business Account ID is required' }),
+	apiKey: z.string().min(1, { message: 'API Key is required' }),
+	webhookSecret: z.string().min(1, { message: 'Webhook Secret is required' })
 })
 
 export const SlackNotificationConfigurationFormSchema = z.object({

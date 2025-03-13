@@ -13,10 +13,27 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { useRegister, useVerifyOtp } from '~/generated'
-import { useLocalStorage } from '~/hooks/use-local-storage'
+import { useAuthState } from '~/hooks/use-auth-state'
 import { AUTH_TOKEN_LS } from '~/constants'
-import { errorNotification } from '~/reusable-functions'
+import { useMutation } from '@tanstack/react-query'
+import customInstance from '~/utils/api-client'
+import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
+
+// Define response types
+interface RegisterResponse {
+	isOtpSent: boolean
+	message?: string
+}
+
+interface VerifyOtpResponse {
+	token: string
+	user?: {
+		id: string
+		email: string
+		name: string
+	}
+}
 
 const otpFormSchema = z.object({
 	otp: z.string().length(6, { message: 'OTP must be 6 characters' })
@@ -24,35 +41,35 @@ const otpFormSchema = z.object({
 
 const SignUpFormSchema = z.object({
 	email: z.string().email({ message: 'Enter a valid email address' }),
-	password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
-	confirmPassword: z.string().min(6, { message: 'Password must be at least 6 characters' }),
-	name: z.string().min(6, { message: 'Name must be at least 6 characters' }),
-	username: z.string().min(6, { message: 'Username must be at least 6 characters' }),
+	password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
+	confirmPassword: z.string().min(8, { message: 'Password must be at least 8 characters' }),
+	name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
+	username: z.string().min(3, { message: 'Username must be at least 3 characters' }),
 	orgInviteSlug: z.string().optional()
 })
 
-type SingUpFormValue = z.infer<typeof SignUpFormSchema>
+type SignUpFormValue = z.infer<typeof SignUpFormSchema>
 type OtpFormValue = z.infer<typeof otpFormSchema>
 
 export default function UserSignupForm() {
-	const setAuthToken = useLocalStorage<string | undefined>(AUTH_TOKEN_LS, undefined)[1]
-
-	const [isBusy, setIsBusy] = useState(false)
+	const router = useRouter()
+	const { setAuthToken } = useAuthState()
+	const [isLoading, setIsLoading] = useState(false)
 	const [activeForm, setActiveForm] = useState<'registrationDetailsForm' | 'otpForm'>(
 		'registrationDetailsForm'
 	)
+	const [registrationData, setRegistrationData] = useState<SignUpFormValue | null>(null)
 
-	const defaultValues = {
-		email: '',
-		password: '',
-		confirmPassword: '',
-		name: '',
-		orgInviteSlug: ''
-	}
-
-	const signUpForm = useForm<SingUpFormValue>({
+	const signUpForm = useForm<SignUpFormValue>({
 		resolver: zodResolver(SignUpFormSchema),
-		defaultValues
+		defaultValues: {
+			email: '',
+			password: '',
+			confirmPassword: '',
+			name: '',
+			username: '',
+			orgInviteSlug: ''
+		}
 	})
 
 	const otpForm = useForm<OtpFormValue>({
@@ -62,86 +79,96 @@ export default function UserSignupForm() {
 		}
 	})
 
-	const sendEmailConfirmationOtpMutation = useRegister()
-	const createAccountMutation = useVerifyOtp()
-
-	async function initiateRegistration(data: SingUpFormValue) {
-		try {
-			if (isBusy) {
-				return
-			}
-			setIsBusy(true)
-
-			if (data.password !== data.confirmPassword) {
-				errorNotification({
-					message: 'Passwords do not match'
-				})
-				return
-			}
-
-			const response = await sendEmailConfirmationOtpMutation.mutateAsync({
+	// Register mutation
+	const registerMutation = useMutation({
+		mutationFn: async (data: SignUpFormValue) => {
+			return await customInstance<RegisterResponse>({
+				url: '/auth/register',
+				method: 'POST',
 				data: {
 					password: data.password,
-					username: data.email,
+					username: data.username,
 					email: data.email,
 					name: data.name,
 					organizationInviteSlug: data.orgInviteSlug || undefined
-				}
+				},
+				publicRoute: true
 			})
-
+		},
+		onSuccess: (response) => {
 			if (response.isOtpSent) {
-				// open the otp form
-				setActiveForm(() => 'otpForm')
+				toast.success('OTP sent to your email')
+				setActiveForm('otpForm')
 			} else {
-				// something went wrong show error token not found
+				toast.error(response.message || 'Failed to send OTP')
 			}
-		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Something went wrong while creating your account'
-			})
-		} finally {
-			setIsBusy(false)
+		},
+		onError: (error: any) => {
+			console.error('Registration error:', error)
+			toast.error(error?.message || 'Something went wrong while creating your account')
+		},
+		onSettled: () => {
+			setIsLoading(false)
 		}
-	}
+	})
 
-	async function submitOtp(data: OtpFormValue) {
-		try {
-			if (isBusy) {
-				return
-			}
-			setIsBusy(true)
-
-			const userData = signUpForm.getValues()
-
-			const response = await createAccountMutation.mutateAsync({
+	// Verify OTP mutation
+	const verifyOtpMutation = useMutation({
+		mutationFn: async (data: { formData: SignUpFormValue; otp: string }) => {
+			return await customInstance<VerifyOtpResponse>({
+				url: '/auth/verify-otp',
+				method: 'POST',
 				data: {
-					password: userData.password,
-					username: userData.username,
-					email: userData.email,
-					name: userData.name,
-					organizationInviteSlug: userData.orgInviteSlug || undefined,
+					password: data.formData.password,
+					username: data.formData.username,
+					email: data.formData.email,
+					name: data.formData.name,
+					organizationInviteSlug: data.formData.orgInviteSlug || undefined,
 					otp: data.otp
-				}
+				},
+				publicRoute: true
 			})
-
+		},
+		onSuccess: (response) => {
 			if (response.token) {
 				setAuthToken(response.token)
-				window.location.href = '/dashboard'
+				toast.success('Account created successfully!')
+				router.push('/')
 			} else {
-				// something went wrong show error token not found
-				errorNotification({
-					message: 'Something went wrong while creating your account'
-				})
+				toast.error('Failed to verify OTP')
 			}
-		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Something went wrong while creating your account'
-			})
-		} finally {
-			setIsBusy(false)
+		},
+		onError: (error: any) => {
+			console.error('OTP verification error:', error)
+			toast.error(error?.message || 'Failed to verify OTP')
+		},
+		onSettled: () => {
+			setIsLoading(false)
 		}
+	})
+
+	function initiateRegistration(data: SignUpFormValue) {
+		if (data.password !== data.confirmPassword) {
+			toast.error('Passwords do not match')
+			return
+		}
+
+		setIsLoading(true)
+		setRegistrationData(data)
+		registerMutation.mutate(data)
+	}
+
+	function submitOtp(data: OtpFormValue) {
+		if (!registrationData) {
+			toast.error('Registration data not found')
+			return
+		}
+
+		setIsLoading(true)
+		verifyOtpMutation.mutate({
+			formData: registrationData,
+			otp: data.otp
+		})
 	}
 
 	return (
@@ -163,7 +190,7 @@ export default function UserSignupForm() {
 										<Input
 											type="email"
 											placeholder="Enter your email..."
-											disabled={isBusy}
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -181,7 +208,7 @@ export default function UserSignupForm() {
 									<FormControl>
 										<Input
 											placeholder="Enter your name"
-											disabled={isBusy}
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -199,7 +226,7 @@ export default function UserSignupForm() {
 									<FormControl>
 										<Input
 											placeholder="Enter your username"
-											disabled={isBusy}
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -218,7 +245,7 @@ export default function UserSignupForm() {
 										<Input
 											type="password"
 											placeholder="Enter your password..."
-											disabled={isBusy}
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -236,8 +263,8 @@ export default function UserSignupForm() {
 									<FormControl>
 										<Input
 											type="password"
-											placeholder="Confirm your password"
-											disabled={isBusy}
+											placeholder="Confirm your password..."
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -255,7 +282,7 @@ export default function UserSignupForm() {
 									<FormControl>
 										<Input
 											placeholder="#########"
-											disabled={isBusy}
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -264,8 +291,8 @@ export default function UserSignupForm() {
 							)}
 						/>
 
-						<Button disabled={isBusy} className="ml-auto w-full" type="submit">
-							Confirm Email
+						<Button disabled={isLoading} className="ml-auto w-full" type="submit">
+							{isLoading ? 'Processing...' : 'Sign up'}
 						</Button>
 					</form>
 				</Form>
@@ -279,15 +306,13 @@ export default function UserSignupForm() {
 						<FormField
 							control={otpForm.control}
 							name="otp"
-							key={'otp_field'}
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Otp</FormLabel>
+									<FormLabel>OTP</FormLabel>
 									<FormControl>
 										<Input
-											id="otp"
-											placeholder="Enter OTP"
-											disabled={isBusy}
+											placeholder="Enter the OTP sent to your email"
+											disabled={isLoading}
 											{...field}
 										/>
 									</FormControl>
@@ -296,8 +321,8 @@ export default function UserSignupForm() {
 							)}
 						/>
 
-						<Button disabled={isBusy} className="ml-auto w-full" type="submit">
-							Sign Up
+						<Button disabled={isLoading} className="ml-auto w-full" type="submit">
+							{isLoading ? 'Verifying...' : 'Verify OTP'}
 						</Button>
 					</form>
 				</Form>
