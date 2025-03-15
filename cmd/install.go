@@ -68,7 +68,7 @@ func installApp(db *sql.DB, fs stuffbin.FileSystem, prompt, idempotent bool) {
 		var ok string
 		fmt.Print("continue (y/N)?  ")
 		if _, err := fmt.Scanf("%s", &ok); err != nil {
-			logger.Error("error reading value from terminal: %v", err.Error(), nil)
+			logger.Error("error reading value from terminal", "error", err.Error())
 		}
 		if strings.ToLower(ok) != "y" {
 			fmt.Println("install cancelled.")
@@ -83,17 +83,17 @@ func installApp(db *sql.DB, fs stuffbin.FileSystem, prompt, idempotent bool) {
 		var users []model.User
 		err := userQuery.Query(db, &users)
 		if err != nil {
-			logger.Error("error checking existing DB schema: %v", err)
-			logger.Error("db is not initialized yet: %v", err)
+			logger.Error("error checking existing DB schema", "error", err)
+			logger.Error("db is not initialized yet", "error", err)
 		} else {
-			logger.Error("skipping install as database seems to be already ready with schema migrations")
+			logger.Info("skipping install as database seems to be already ready with schema migrations")
 			os.Exit(0)
 		}
 	}
 
 	// Migrate the tables.
 	if err := applyMigrations(db, fs); err != nil {
-		logger.Error("error migrating DB schema: %v", err)
+		logger.Error("error migrating DB schema", "error", err)
 		os.Exit(1)
 	}
 
@@ -140,7 +140,7 @@ func installApp(db *sql.DB, fs stuffbin.FileSystem, prompt, idempotent bool) {
 		panic(err)
 	}
 
-	logger.Info("inserted default user: %v", insertedUser, insertedOrg)
+	logger.Info("inserted default user and organization", "user", insertedUser, "organization", insertedOrg)
 
 	defaultOrgMember := model.OrganizationMember{
 		AccessLevel:    model.UserPermissionLevelEnum_Owner,
@@ -198,5 +198,5 @@ func installApp(db *sql.DB, fs stuffbin.FileSystem, prompt, idempotent bool) {
 	}
 
 	logger.Info("setup complete")
-	logger.Info(`run the program and access the dashboard at %s`, koa.MustString("app.address"))
+	logger.Info("run the program and access the dashboard", "address", koa.MustString("app.address"))
 }

@@ -1,7 +1,6 @@
 package organization_controller
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -294,6 +293,22 @@ func NewOrganizationController() *OrganizationController {
 					Path:                    "/api/organization/phone-numbers/:id",
 					Method:                  http.MethodGet,
 					Handler:                 interfaces.HandlerWithSession(getPhoneNumberById),
+					IsAuthorizationRequired: true,
+					MetaData: interfaces.RouteMetaData{
+						PermissionRoleLevel: api_types.Member,
+						RateLimitConfig: interfaces.RateLimitConfig{
+							MaxRequests:    10,
+							WindowTimeInMs: 1000 * 60, // 1 minute
+						},
+						RequiredPermission: []api_types.RolePermissionEnum{
+							api_types.GetPhoneNumbers,
+						},
+					},
+				},
+				{
+					Path:                    "/api/organization/phone-numbers/stored",
+					Method:                  http.MethodGet,
+					Handler:                 interfaces.HandlerWithSession(getStoredPhoneNumbers),
 					IsAuthorizationRequired: true,
 					MetaData: interfaces.RouteMetaData{
 						PermissionRoleLevel: api_types.Member,
@@ -614,9 +629,6 @@ func getOrganizationById(context interfaces.ContextWithSession) error {
 }
 
 func deleteOrganization(context interfaces.ContextWithSession) error {
-
-	return context.String(http.StatusInternalServerError, "NOT IMPLEMENTED YET")
-
 	organizationId := context.Param("id")
 	if organizationId == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid organization id")
@@ -967,6 +979,7 @@ func getOrganizationMembers(context interfaces.ContextWithSession) error {
 			}
 
 			accessLevel := api_types.UserPermissionLevelEnum(member.OrganizationMember.AccessLevel)
+
 			memberId := member.OrganizationMember.UniqueId.String()
 			mmbr := api_types.OrganizationMemberSchema{
 				CreatedAt:   member.OrganizationMember.CreatedAt,
@@ -1153,7 +1166,6 @@ func updateOrganizationMemberRoles(context interfaces.ContextWithSession) error 
 	}
 
 	var orgMember model.OrganizationMember
-
 	memberQuery := SELECT(table.OrganizationMember.AllColumns).
 		FROM(table.OrganizationMember).
 		WHERE(table.OrganizationMember.UniqueId.EQ(UUID(memberUuid))).
@@ -1570,10 +1582,54 @@ func getAllPhoneNumbers(context interfaces.ContextWithSession) error {
 
 	phoneNumbersResponse, err := wapiClient.Business.PhoneNumber.FetchAll(true)
 
-	fmt.Println("phoneNumbersResponse", phoneNumbersResponse)
-
 	if err != nil {
+		context.App.Logger.Error("Error fetching phone numbers", "err", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	// Store the phone numbers in the database
+	if phoneNumbersResponse != nil && len(phoneNumbersResponse.Data) > 0 {
+		// First, check if the WhatsAppPhoneNumber table exists
+		_, err := context.App.Db.Exec(`
+			CREATE TABLE IF NOT EXISTS "WhatsAppPhoneNumber" (
+				"UniqueId" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+				"CreatedAt" timestamp with time zone NOT NULL DEFAULT now(),
+				"UpdatedAt" timestamp with time zone NOT NULL DEFAULT now(),
+				"PhoneNumberId" text NOT NULL,
+				"DisplayPhoneNumber" text NOT NULL,
+				"QualityRating" text,
+				"Status" text,
+				"WhatsappBusinessAccountId" uuid NOT NULL REFERENCES "WhatsappBusinessAccount"("UniqueId"),
+				UNIQUE("PhoneNumberId", "WhatsappBusinessAccountId")
+			)
+		`)
+
+		if err != nil {
+			context.App.Logger.Error("Error creating WhatsAppPhoneNumber table", "err", err.Error())
+		} else {
+			// Delete existing phone numbers for this business account
+			_, err = context.App.Db.Exec(`
+				DELETE FROM "WhatsAppPhoneNumber" 
+				WHERE "WhatsappBusinessAccountId" = $1
+			`, businessAccount.UniqueId)
+
+			if err != nil {
+				context.App.Logger.Error("Error deleting existing phone numbers", "err", err.Error())
+			}
+
+			// Insert the new phone numbers
+			for _, phoneNumber := range phoneNumbersResponse.Data {
+				_, err = context.App.Db.Exec(`
+					INSERT INTO "WhatsAppPhoneNumber" 
+					("PhoneNumberId", "DisplayPhoneNumber", "QualityRating", "Status", "WhatsappBusinessAccountId", "UpdatedAt")
+					VALUES ($1, $2, $3, $4, $5, NOW())
+				`, phoneNumber.Id, phoneNumber.DisplayPhoneNumber, phoneNumber.QualityRating, "Active", businessAccount.UniqueId)
+
+				if err != nil {
+					context.App.Logger.Error("Error inserting phone number", "err", err.Error())
+				}
+			}
+		}
 	}
 
 	return context.JSON(http.StatusOK, phoneNumbersResponse.Data)
@@ -1624,6 +1680,81 @@ func getPhoneNumberById(context interfaces.ContextWithSession) error {
 	}
 
 	return context.JSON(http.StatusOK, phoneNumberResponse)
+}
+
+func getStoredPhoneNumbers(context interfaces.ContextWithSession) error {
+	orgUuid, err := uuid.Parse(context.Session.User.OrganizationId)
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Invalid organization id")
+	}
+
+	// Get the WhatsApp Business Account ID for this organization
+	businessAccountDetails := SELECT(table.WhatsappBusinessAccount.AllColumns).
+		FROM(table.WhatsappBusinessAccount).
+		WHERE(table.WhatsappBusinessAccount.OrganizationId.EQ(UUID(orgUuid))).
+		LIMIT(1)
+
+	var businessAccount model.WhatsappBusinessAccount
+
+	err = businessAccountDetails.QueryContext(context.Request().Context(), context.App.Db, &businessAccount)
+
+	if err != nil {
+		if err.Error() == qrm.ErrNoRows.Error() {
+			return context.JSON(http.StatusOK, []api_types.PhoneNumberSchema{})
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, "Error fetching business account details")
+	}
+
+	// Check if the WhatsAppPhoneNumber table exists
+	var tableExists bool
+	err = context.App.Db.QueryRow(`
+		SELECT EXISTS (
+			SELECT FROM information_schema.tables 
+			WHERE table_name = 'WhatsAppPhoneNumber'
+		)
+	`).Scan(&tableExists)
+
+	if err != nil {
+		context.App.Logger.Error("Error checking if WhatsAppPhoneNumber table exists", "error", err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "Error checking database schema")
+	}
+
+	if !tableExists {
+		return context.JSON(http.StatusOK, []api_types.PhoneNumberSchema{})
+	}
+
+	// Query the stored phone numbers
+	rows, err := context.App.Db.Query(`
+		SELECT "PhoneNumberId", "DisplayPhoneNumber", "QualityRating", "Status"
+		FROM "WhatsAppPhoneNumber"
+		WHERE "WhatsappBusinessAccountId" = $1
+	`, businessAccount.UniqueId)
+
+	if err != nil {
+		context.App.Logger.Error("Error querying phone numbers", "error", err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "Error fetching phone numbers")
+	}
+	defer rows.Close()
+
+	var phoneNumbers []api_types.PhoneNumberSchema
+	for rows.Next() {
+		var phoneNumber api_types.PhoneNumberSchema
+		var status string
+		err := rows.Scan(&phoneNumber.Id, &phoneNumber.DisplayPhoneNumber, &phoneNumber.QualityRating, &status)
+		if err != nil {
+			context.App.Logger.Error("Error scanning phone number row", "error", err.Error())
+			continue
+		}
+		phoneNumbers = append(phoneNumbers, phoneNumber)
+	}
+
+	if err = rows.Err(); err != nil {
+		context.App.Logger.Error("Error iterating phone number rows", "error", err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "Error processing phone numbers")
+	}
+
+	return context.JSON(http.StatusOK, phoneNumbers)
 }
 
 func transferOwnershipOfOrganization(context interfaces.ContextWithSession) error {
@@ -1882,7 +2013,7 @@ func _verifyAccessToOrganization(context interfaces.ContextWithSession, userId, 
 
 	err := orgQuery.Query(context.App.Db, &dest)
 
-	context.App.Logger.Info("dest", dest)
+	context.App.Logger.Info("organization access verification", "organization", dest)
 
 	if err != nil {
 		return false

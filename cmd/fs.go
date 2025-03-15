@@ -40,7 +40,7 @@ func initFS(appDir, frontendDir string) stuffbin.FileSystem {
 	// Get the executable's execPath.
 	execPath, err := os.Executable()
 	if err != nil {
-		logger.Error("error getting executable path: %v", err)
+		logger.Error("error getting executable path", "error", err)
 	}
 
 	// Load embedded files in the executable.
@@ -50,10 +50,10 @@ func initFS(appDir, frontendDir string) stuffbin.FileSystem {
 		hasEmbed = false
 		// Running in local mode. Load local assets into
 		// the in-memory stuffbin.FileSystem.
-		logger.Info("unable to initialize embedded filesystem (%v). Using local filesystem", err)
+		logger.Info("unable to initialize embedded filesystem", "error", err)
 		fs, err = stuffbin.NewLocalFS("/")
 		if err != nil {
-			logger.Error("failed to initialize local file for assets: %v", err)
+			logger.Error("failed to initialize local file for assets", "error", err)
 		}
 	}
 
@@ -72,11 +72,11 @@ func initFS(appDir, frontendDir string) stuffbin.FileSystem {
 	// Load files from disk and overlay into the FS.
 	fStatic, err := stuffbin.NewLocalFS("/", files...)
 	if err != nil {
-		logger.Error("failed reading static files from disk: '%s': %v", err)
+		logger.Error("failed reading static files from disk", "error", err)
 	}
 
 	if err := fs.Merge(fStatic); err != nil {
-		logger.Error("error merging static files: '%s': %v", err)
+		logger.Error("error merging static files", "error", err)
 	}
 
 	return fs

@@ -756,7 +756,7 @@ func handleSendMessage(context interfaces.ContextWithSession) error {
 	}
 
 	stringMessageData := string(messageData)
-	businessAccountId := "103043282674158"
+	businessAccountId := "647796864327279"
 
 	messageToInsert := model.Message{
 		ConversationId:            &conversationWithContact.UniqueId,

@@ -54,10 +54,10 @@ func init() {
 	if koa.Bool("new-config") {
 		path := koa.Strings("config")[0]
 		if err := newConfigFile(path); err != nil {
-			logger.Error(err.Error())
+			logger.Error("error generating config file", "error", err)
 			os.Exit(1)
 		}
-		logger.Debug("generated %s. Edit and run --install", path, nil)
+		logger.Debug("generated config file", "path", path)
 		os.Exit(0)
 	}
 
@@ -71,18 +71,18 @@ func init() {
 		return strings.Replace(strings.ToLower(
 			strings.TrimPrefix(s, "WAPIKIT_")), "__", ".", -1)
 	}), nil); err != nil {
-		logger.Error("error loading config from env: %v", err, nil)
+		logger.Error("error loading config from env", "error", err)
 	}
 
 	if koa.Bool("install") {
-		logger.Info("Installing the application")
+		logger.Info("installing the application")
 		// ! should be idempotent
 		installApp(database.GetDbInstance(koa.String("database.url")), fs, !koa.Bool("yes"), koa.Bool("idempotent"))
 		os.Exit(0)
 	}
 
 	if koa.Bool("upgrade") {
-		logger.Info("Upgrading the application")
+		logger.Info("upgrading the application")
 		// ! should not upgrade without asking for thr permission, because database migration can be destructive
 		// upgrade handler
 	}
@@ -92,12 +92,12 @@ func init() {
 }
 
 func main() {
-	logger.Info("Starting the application")
+	logger.Info("starting the application")
 
 	redisUrl := koa.String("redis.url")
 
 	if redisUrl == "" {
-		logger.Error("Redis URL not provided")
+		logger.Error("redis url not provided")
 		os.Exit(1)
 	}
 
@@ -137,6 +137,6 @@ func main() {
 	}()
 
 	wg.Wait()
-	logger.Info("Application ready!!")
+	logger.Info("application ready!!")
 
 }

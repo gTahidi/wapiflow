@@ -66,14 +66,14 @@ func (rc *runningCampaign) nextContactsBatch() bool {
 	lastContactSentUuid, err := uuid.Parse(rc.LastContactIdSent)
 
 	if err != nil {
-		rc.Manager.Logger.Error("error parsing lastContactSentUuid", err.Error())
+		rc.Manager.Logger.Error("error parsing lastContactSentUuid", "error", err.Error())
 		return false
 	}
 
 	campaignUniqueId, err := uuid.Parse(rc.UniqueId.String())
 
 	if err != nil {
-		rc.Manager.Logger.Error("error parsing campaignUniqueId", err.Error())
+		rc.Manager.Logger.Error("error parsing campaignUniqueId", "error", err.Error())
 		return false
 	}
 
@@ -86,7 +86,7 @@ func (rc *runningCampaign) nextContactsBatch() bool {
 	err = listIdsQuery.Query(rc.Manager.Db, &contactLists)
 
 	if err != nil {
-		rc.Manager.Logger.Error("error fetching contact lists from the database", err.Error())
+		rc.Manager.Logger.Error("error fetching contact lists from the database", "error", err.Error())
 		return false
 	}
 
@@ -139,7 +139,7 @@ func (rc *runningCampaign) nextContactsBatch() bool {
 	err = nextContactsQuery.Query(rc.Manager.Db, &contacts)
 
 	if err != nil {
-		rc.Manager.Logger.Error("error fetching contacts from the database", err.Error(), nil)
+		rc.Manager.Logger.Error("error fetching contacts from the database", "error", err.Error())
 		return false
 	}
 
@@ -192,7 +192,7 @@ func (rc *runningCampaign) cleanUp() {
 	err := campaignQuery.Query(rc.Manager.Db, &campaign)
 
 	if err != nil {
-		rc.Manager.Logger.Error("error fetching campaign from the database", err.Error(), nil)
+		rc.Manager.Logger.Error("error fetching campaign from the database", "error", err.Error())
 		// campaign not found in the db for some reason, it will be removed from the running campaigns list
 		return
 	}
@@ -200,7 +200,7 @@ func (rc *runningCampaign) cleanUp() {
 	if campaign.Status == model.CampaignStatusEnum_Running {
 		_, err = rc.Manager.updatedCampaignStatus(rc.UniqueId.String(), model.CampaignStatusEnum_Finished)
 		if err != nil {
-			rc.Manager.Logger.Error("error updating campaign status", err.Error(), nil)
+			rc.Manager.Logger.Error("error updating campaign status", "error", err.Error())
 		}
 	}
 }
@@ -303,7 +303,7 @@ func (cm *CampaignManager) updatedCampaignStatus(campaignId string, status model
 	_, err := campaignUpdateQuery.Exec(cm.Db)
 
 	if err != nil {
-		cm.Logger.Error("error updating campaign status", err.Error())
+		cm.Logger.Error("error updating campaign status", "error", err.Error())
 		return false, err
 	}
 
@@ -329,7 +329,7 @@ func (cm *CampaignManager) scanCampaigns() {
 			for _, campaignId := range currentRunningCampaignIds {
 				campaignUuid, err := uuid.Parse(campaignId)
 				if err != nil {
-					cm.Logger.Error("error parsing campaign id", err.Error())
+					cm.Logger.Error("error parsing campaign id", "error", err.Error())
 					continue
 				}
 				runningCampaignExpression = append(runningCampaignExpression, UUID(campaignUuid))
@@ -351,7 +351,7 @@ func (cm *CampaignManager) scanCampaigns() {
 			err := campaignsQuery.QueryContext(context, cm.Db, &runningCampaigns)
 
 			if err != nil {
-				cm.Logger.Error("error fetching running campaigns from the database", err)
+				cm.Logger.Error("error fetching running campaigns from the database", "error", err)
 			}
 
 			if len(runningCampaigns) == 0 {
@@ -683,7 +683,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 		err := messageSentRecordQuery.Query(cm.Db, &messageSent)
 
 		if err != nil {
-			cm.Logger.Error("error saving message record to the database", err.Error())
+			cm.Logger.Error("error saving message record to the database", "error", err.Error())
 		}
 	}
 

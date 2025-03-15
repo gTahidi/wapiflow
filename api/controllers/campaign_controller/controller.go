@@ -234,7 +234,7 @@ func getCampaigns(context interfaces.ContextWithSession) error {
 				var unmarshalled map[string]interface{}
 				err := json.Unmarshal([]byte(*campaign.TemplateMessageComponentParameters), &unmarshalled)
 				if err != nil {
-					context.App.Logger.Error("error unmarshalling template component parameters: %v", err.Error())
+					context.App.Logger.Error("error unmarshalling template component parameters", "error", err.Error())
 				}
 				templateComponentParameters = &unmarshalled
 			}
@@ -335,7 +335,7 @@ func createNewCampaign(context interfaces.ContextWithSession) error {
 		for _, payloadTag := range payload.Tags {
 			tagUUID, err := uuid.Parse(payloadTag)
 			if err != nil {
-				context.App.Logger.Error("Error converting tag unique id to uuid: %v", err)
+				context.App.Logger.Error("Error converting tag unique id to uuid", "error", err.Error())
 				continue
 			}
 			campaignTags = append(campaignTags, model.CampaignTag{
@@ -365,7 +365,7 @@ func createNewCampaign(context interfaces.ContextWithSession) error {
 			listUUID, err := uuid.Parse(listId)
 			fmt.Println("List UUID: ", listUUID)
 			if err != nil {
-				context.App.Logger.Error("Error converting list unique id to uuid: %v", err)
+				context.App.Logger.Error("Error converting list unique id to uuid", "error", err.Error())
 				continue
 			}
 			campaignLists = append(campaignLists, model.CampaignList{
@@ -458,7 +458,7 @@ func getCampaignById(context interfaces.ContextWithSession) error {
 		var unmarshalled map[string]interface{}
 		err := json.Unmarshal([]byte(*campaignResponse.TemplateMessageComponentParameters), &unmarshalled)
 		if err != nil {
-			context.App.Logger.Error("error unmarshalling template component parameters: %v", err.Error())
+			context.App.Logger.Error("error unmarshalling template component parameters", "error", err.Error())
 		}
 		templateComponentParameters = &unmarshalled
 	}
@@ -760,7 +760,7 @@ func updateCampaignById(context interfaces.ContextWithSession) error {
 		err = campaignListInsertQuery.QueryContext(context.Request().Context(), context.App.Db, &insertedLists)
 
 		if err != nil {
-			logger.Error("Error inserting lists:", err.Error(), nil)
+			logger.Error("Error inserting lists", "error", err.Error())
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 	}
@@ -769,7 +769,7 @@ func updateCampaignById(context interfaces.ContextWithSession) error {
 	var stringifiedParameters []byte
 	stringifiedParameters, err = json.Marshal(payload.TemplateComponentParameters)
 	if err != nil {
-		context.App.Logger.Error("Error marshalling template component parameters: %v", err.Error())
+		context.App.Logger.Error("Error marshalling template component parameters", "error", err.Error())
 	}
 
 	// pitch in default if no parameters are provided

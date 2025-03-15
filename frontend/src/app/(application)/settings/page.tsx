@@ -4,12 +4,14 @@ import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { Input } from '~/components/ui/input'
+import { Textarea } from '~/components/ui/textarea'
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '~/components/ui/tooltip'
+import { Badge } from '~/components/ui/badge'
 import RolesTable from '~/components/settings/roles-table'
+import { Input } from '~/components/ui/input'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLayoutStore } from '~/store/layout.store'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { errorNotification, materialConfirm, successNotification } from '~/reusable-functions'
 import {
 	Select,
@@ -20,7 +22,7 @@ import {
 } from '~/components/ui/select'
 import { Heading } from '~/components/ui/heading'
 import { Separator } from '~/components/ui/separator'
-import { Plus, EyeIcon, Clipboard } from 'lucide-react'
+import { Plus, EyeIcon, Clipboard, RefreshCw, PhoneIcon } from 'lucide-react'
 import { useCopyToClipboard } from 'usehooks-ts'
 import {
 	RolePermissionEnum,
@@ -62,12 +64,11 @@ import { MultiSelect } from '~/components/multi-select'
 import { listStringEnumMembers } from 'ts-enum-utils'
 import { useAuthState } from '~/hooks/use-auth-state'
 import LoadingSpinner from '~/components/loader'
-import { Textarea } from '~/components/ui/textarea'
 import DocumentationPitch from '~/components/forms/documentation-pitch'
 import { Switch } from '~/components/ui/switch'
 
 export default function SettingsPage() {
-	const { user, isOwner, currentOrganization, writeProperty, phoneNumbers, featureFlags } =
+	const { user, isOwner, currentOrganization, writeProperty, featureFlags } =
 		useLayoutStore()
 
 	enum SettingTabEnum {
@@ -138,8 +139,8 @@ export default function SettingsPage() {
 
 	const [whatsAppBusinessAccountDetailsVisibility, setWhatsAppBusinessAccountDetailsVisibility] =
 		useState({
-			whatsappBusinessAccountId: false,
-			apiToken: false,
+			businessAccountId: false,
+			apiKey: false,
 			webhookSecret: false
 		})
 
@@ -149,6 +150,9 @@ export default function SettingsPage() {
 		searchParams.get('tab')?.toString() || SettingTabEnum.Account
 	)
 	const [isBusy, setIsBusy] = useState(false)
+	const [phoneNumbers, setPhoneNumbers] = useState<any[]>([])
+	const [isSyncing, setIsSyncing] = useState(false)
+	const [showPhoneNumbers, setShowPhoneNumbers] = useState(false)
 
 	const [showWebhookSecret, setShowWebhookSecret] = useState(false)
 	const [showAiApiKey, setShowAiApiKey] = useState(false)
@@ -212,8 +216,9 @@ export default function SettingsPage() {
 	>({
 		resolver: zodResolver(WhatsappBusinessAccountDetailsFormSchema),
 		defaultValues: {
-			whatsappBusinessAccountId: currentOrganization?.businessAccountId || undefined,
-			apiToken: currentOrganization?.whatsappBusinessAccountDetails?.accessToken || undefined
+			businessAccountId: currentOrganization?.businessAccountId || undefined,
+			apiKey: currentOrganization?.whatsappBusinessAccountDetails?.accessToken || undefined,
+			webhookSecret: currentOrganization?.whatsappBusinessAccountDetails?.webhookSecret || undefined
 		}
 	})
 
@@ -245,15 +250,15 @@ export default function SettingsPage() {
 
 	useEffect(() => {
 		if (
-			whatsappBusinessAccountIdForm.formState.touchedFields.apiToken ||
-			whatsappBusinessAccountIdForm.formState.touchedFields.whatsappBusinessAccountId
+			whatsappBusinessAccountIdForm.formState.touchedFields.apiKey ||
+			whatsappBusinessAccountIdForm.formState.touchedFields.businessAccountId
 		) {
 			return
 		}
 
 		if (currentOrganization?.whatsappBusinessAccountDetails) {
 			whatsappBusinessAccountIdForm.setValue(
-				'whatsappBusinessAccountId',
+				'businessAccountId',
 				currentOrganization.whatsappBusinessAccountDetails.businessAccountId,
 				{
 					shouldTouch: true
@@ -261,7 +266,7 @@ export default function SettingsPage() {
 			)
 
 			whatsappBusinessAccountIdForm.setValue(
-				'apiToken',
+				'apiKey',
 				currentOrganization.whatsappBusinessAccountDetails.accessToken,
 				{
 					shouldTouch: true
@@ -347,6 +352,33 @@ export default function SettingsPage() {
 		}
 	}, [user?.name, userUpdateForm])
 
+	useEffect(() => {
+		getAllPhoneNumbers()
+			.then(response => {
+				if (response && response.length > 0) {
+					setPhoneNumbers(response)
+					setShowPhoneNumbers(true)
+					successNotification({ message: 'Phone numbers synced successfully!' })
+				} else {
+					errorNotification({ message: 'No phone numbers found or sync failed' })
+				}
+			})
+			.catch(error => {
+				console.error('Error fetching phone numbers:', error)
+			})
+
+		getStoredPhoneNumbers()
+			.then(response => {
+				if (response && response.length > 0) {
+					setPhoneNumbers(response)
+					setShowPhoneNumbers(true)
+				}
+			})
+			.catch(error => {
+				console.error('Error fetching stored phone numbers:', error)
+			})
+	}, [])
+
 	async function deleteOrganization() {
 		try {
 			setIsBusy(true)
@@ -359,11 +391,12 @@ export default function SettingsPage() {
 				return
 				// delete organization
 			}
-		} catch {
-			console.error('Error deleting organization')
-			errorNotification({
-				message: 'Error deleting organization'
-			})
+		} catch (error) {
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -381,11 +414,12 @@ export default function SettingsPage() {
 				return
 				// delete organization
 			}
-		} catch {
-			console.error('Error leaving organization')
-			errorNotification({
-				message: 'Error leaving organization'
-			})
+		} catch (error) {
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -399,8 +433,8 @@ export default function SettingsPage() {
 
 			const response = await updateWhatsappBusinessAccountDetailsMutation.mutateAsync({
 				data: {
-					businessAccountId: data.whatsappBusinessAccountId,
-					accessToken: data.apiToken
+					businessAccountId: data.businessAccountId,
+					accessToken: data.apiKey
 				}
 			})
 
@@ -416,15 +450,14 @@ export default function SettingsPage() {
 					}
 				})
 			} else {
-				errorNotification({
-					message: 'Error updating WhatsApp Business Account ID'
-				})
+				errorNotification({ message: 'Error updating WhatsApp Business Account ID' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error updating WhatsApp Business Account ID'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		}
 	}
 
@@ -450,19 +483,16 @@ export default function SettingsPage() {
 						description: data.description
 					}
 				})
-				successNotification({
-					message: 'Organization details updated successfully'
-				})
+				successNotification({ message: 'Organization details updated successfully' })
 			} else {
-				errorNotification({
-					message: 'Error updating organization details'
-				})
+				errorNotification({ message: 'Error updating organization details' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error updating organization details'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -486,19 +516,16 @@ export default function SettingsPage() {
 						name: data.name
 					}
 				})
-				successNotification({
-					message: 'User details updated successfully'
-				})
+				successNotification({ message: 'User details updated successfully' })
 			} else {
-				errorNotification({
-					message: 'Error updating user details'
-				})
+				errorNotification({ message: 'Error updating user details' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error updating user details'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -518,14 +545,10 @@ export default function SettingsPage() {
 				})
 
 				if (response) {
-					successNotification({
-						message: 'Role updated successfully'
-					})
+					successNotification({ message: 'Role updated successfully' })
 					setIsRoleCreationModelOpen(false)
 				} else {
-					errorNotification({
-						message: 'Error updating role'
-					})
+					errorNotification({ message: 'Error updating role' })
 				}
 			} else {
 				const response = await createRoleMutation.mutateAsync({
@@ -537,23 +560,20 @@ export default function SettingsPage() {
 				})
 
 				if (response) {
-					successNotification({
-						message: 'Role created successfully'
-					})
+					successNotification({ message: 'Role created successfully' })
 					setIsRoleCreationModelOpen(false)
 					setRoleIdToEdit(null)
 					await refetchRoles()
 				} else {
-					errorNotification({
-						message: 'Error creating role'
-					})
+					errorNotification({ message: 'Error creating role' })
 				}
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error creating / updating role'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -564,23 +584,17 @@ export default function SettingsPage() {
 			setIsBusy(true)
 			const apiKey = await getApiKeysQuery()
 			if (!apiKey) {
-				errorNotification({
-					message: 'Error copying API key'
-				})
+				errorNotification({ message: 'Error copying API key' })
 			} else {
 				await copyToClipboard(apiKey.apiKey.key)
-				successNotification({
-					message: 'API key copied to clipboard'
-				})
+				successNotification({ message: 'API key copied to clipboard' })
 			}
 		} catch (error) {
-			console.error({
-				message: 'Error copying API key'
-			})
-
-			errorNotification({
-				message: 'Error copying API key'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -591,17 +605,16 @@ export default function SettingsPage() {
 			setIsBusy(true)
 			const apiKey = await getApiKeysQuery()
 			if (!apiKey) {
-				errorNotification({
-					message: 'Error copying API key'
-				})
+				errorNotification({ message: 'Error getting API key' })
 			} else {
 				setApiKey(apiKey.apiKey.key)
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error getting API key'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -623,25 +636,19 @@ export default function SettingsPage() {
 			const response = await regenerateApiKeyQuery()
 
 			if (response.apiKey) {
-				successNotification({
-					message: 'API key regenerated successfully'
-				})
-
+				successNotification({ message: 'API key regenerated successfully' })
 				await copyToClipboard(response.apiKey.key)
 				setApiKey(response.apiKey.key)
-				successNotification({
-					message: 'API key copied to clipboard'
-				})
+				successNotification({ message: 'API key copied to clipboard' })
 			} else {
-				errorNotification({
-					message: 'Error regenerating API key'
-				})
+				errorNotification({ message: 'Error regenerating API key' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error regenerating API key'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(false)
 		}
@@ -649,35 +656,34 @@ export default function SettingsPage() {
 
 	async function syncPhoneNumbers() {
 		try {
-			setIsBusy(true)
 			const confirmed = await materialConfirm({
 				title: 'Sync Phone Numbers',
-				description:
-					'Are you sure you want to sync phone numbers with WhatsApp Business Account? This need all current campaigns to be either completed or no paused campaigns.'
+				description: 'Are you sure you want to sync phone numbers from WhatsApp?'
 			})
-			if (!confirmed) return
+
+			if (!confirmed) {
+				return
+			}
+
+			setIsSyncing(true)
 
 			const response = await getAllPhoneNumbers()
-
-			if (response) {
-				writeProperty({
-					phoneNumbers: response
-				})
-				successNotification({
-					message: 'Phone numbers synced successfully'
-				})
+			
+			if (response && response.length > 0) {
+				setPhoneNumbers(response)
+				setShowPhoneNumbers(true)
+				successNotification({ message: 'Phone numbers synced successfully!' })
 			} else {
-				errorNotification({
-					message: 'Error syncing phone numbers'
-				})
+				errorNotification({ message: 'No phone numbers found or sync failed' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error syncing phone numbers'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
-			setIsBusy(false)
+			setIsSyncing(false)
 		}
 	}
 
@@ -711,19 +717,16 @@ export default function SettingsPage() {
 						}
 					}
 				})
-				successNotification({
-					message: 'Slack notification configuration updated successfully'
-				})
+				successNotification({ message: 'Slack notification configuration updated successfully' })
 			} else {
-				errorNotification({
-					message: 'Error updating slack notification configuration'
-				})
+				errorNotification({ message: 'Error updating slack notification configuration' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error updating slack notification configuration'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(() => false)
 		}
@@ -763,19 +766,16 @@ export default function SettingsPage() {
 						}
 					}
 				})
-				successNotification({
-					message: 'Email notification configuration updated successfully'
-				})
+				successNotification({ message: 'Email notification configuration updated successfully' })
 			} else {
-				errorNotification({
-					message: 'Error updating email notification configuration'
-				})
+				errorNotification({ message: 'Error updating email notification configuration' })
 			}
 		} catch (error) {
-			console.error(error)
-			errorNotification({
-				message: 'Error updating email notification configuration'
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(() => false)
 		}
@@ -810,20 +810,60 @@ export default function SettingsPage() {
 						}
 					}
 				})
-				successNotification({
-					message: 'AI configuration updated successfully'
-				})
+				successNotification({ message: 'AI configuration updated successfully' })
 			} else {
-				errorNotification({
-					message: 'Error updating ai configuration'
-				})
+				errorNotification({ message: 'Error updating ai configuration' })
 			}
 		} catch (error) {
-			errorNotification({
-				message: (error as Error).message
-			})
+			if (error instanceof Error) {
+				errorNotification({ message: error.message })
+			} else {
+				errorNotification({ message: 'An unknown error occurred' })
+			}
 		} finally {
 			setIsBusy(() => false)
+		}
+	}
+
+	async function getAllPhoneNumbers() {
+		try {
+			const response = await fetch('/api/organization/phone-numbers', {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			})
+
+			if (!response.ok) {
+				throw new Error('Failed to fetch phone numbers')
+			}
+
+			const data = await response.json()
+			return data
+		} catch (error) {
+			console.error('Error fetching phone numbers:', error)
+			return []
+		}
+	}
+
+	async function getStoredPhoneNumbers() {
+		try {
+			const response = await fetch('/api/organization/stored-phone-numbers', {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			})
+
+			if (!response.ok) {
+				throw new Error('Failed to fetch stored phone numbers')
+			}
+
+			const data = await response.json()
+			return data
+		} catch (error) {
+			console.error('Error fetching stored phone numbers:', error)
+			return []
 		}
 	}
 
@@ -871,7 +911,7 @@ export default function SettingsPage() {
 																control={
 																	whatsappBusinessAccountIdForm.control
 																}
-																name="whatsappBusinessAccountId"
+																name="businessAccountId"
 																render={({ field }) => (
 																	<FormItem className="w-full">
 																		<FormLabel>
@@ -888,7 +928,7 @@ export default function SettingsPage() {
 																					{...field}
 																					autoComplete="off"
 																					type={
-																						whatsAppBusinessAccountDetailsVisibility.whatsappBusinessAccountId
+																						whatsAppBusinessAccountDetailsVisibility.businessAccountId
 																							? 'text'
 																							: 'password'
 																					}
@@ -899,8 +939,8 @@ export default function SettingsPage() {
 																						setWhatsAppBusinessAccountDetailsVisibility(
 																							data => ({
 																								...data,
-																								whatsappBusinessAccountId:
-																									!data.whatsappBusinessAccountId
+																								businessAccountId:
+																									!data.businessAccountId
 																							})
 																						)
 																					}}
@@ -917,7 +957,7 @@ export default function SettingsPage() {
 																control={
 																	whatsappBusinessAccountIdForm.control
 																}
-																name="apiToken"
+																name="apiKey"
 																render={({ field }) => (
 																	<FormItem className="w-full">
 																		<FormLabel>
@@ -929,11 +969,11 @@ export default function SettingsPage() {
 																					disabled={
 																						isBusy
 																					}
-																					placeholder="whatsapp business account api token"
+																					placeholder="whatsapp business account api key"
 																					{...field}
 																					autoComplete="off"
 																					type={
-																						whatsAppBusinessAccountDetailsVisibility.apiToken
+																						whatsAppBusinessAccountDetailsVisibility.apiKey
 																							? 'text'
 																							: 'password'
 																					}
@@ -944,8 +984,8 @@ export default function SettingsPage() {
 																						setWhatsAppBusinessAccountDetailsVisibility(
 																							data => ({
 																								...data,
-																								apiToken:
-																									!data.apiToken
+																								apiKey:
+																									!data.apiKey
 																							})
 																						)
 																					}}
@@ -1063,7 +1103,7 @@ export default function SettingsPage() {
 																	}}
 																	disabled={!isOwner || isBusy}
 																>
-																	Sync
+																	{isSyncing ? 'Syncing...' : 'Sync'}
 																</Button>
 															</TooltipTrigger>
 															<TooltipContent
@@ -1085,52 +1125,63 @@ export default function SettingsPage() {
 											</Card>
 										</div>
 
-										<Card className="flex flex-1 items-center justify-between">
-											<CardHeader>
-												<CardTitle>Default Phone Number</CardTitle>
-											</CardHeader>
-											<CardContent className="flex h-fit items-center justify-center pb-0">
-												<Select
-													onValueChange={e => {
-														console.log(e)
-													}}
-													value={
-														phoneNumbers?.[0]?.display_phone_number ||
-														'no organizations'
-													}
-												>
-													<SelectTrigger>
-														<SelectValue placeholder="Select Phone Number" />
-													</SelectTrigger>
-
-													<SelectContent>
-														{!phoneNumbers ||
-														phoneNumbers.length === 0 ? (
-															<SelectItem value={'empty'} disabled>
-																No Phone Numbers.
-															</SelectItem>
-														) : (
-															<>
-																{phoneNumbers?.map(phoneNumber => (
-																	<SelectItem
-																		key={
-																			phoneNumber.display_phone_number
-																		}
-																		value={
-																			phoneNumber.display_phone_number
-																		}
+										{showPhoneNumbers && (
+											<div className="mt-4">
+												<div className="flex items-center justify-between mb-2">
+													<h4 className="text-sm font-medium">Synced Phone Numbers</h4>
+													{phoneNumbers.length > 0 && (
+														<Badge variant="outline" className="text-xs">
+															{phoneNumbers.length} {phoneNumbers.length === 1 ? 'number' : 'numbers'}
+														</Badge>
+													)}
+												</div>
+												
+												{phoneNumbers.length > 0 ? (
+													<div className="bg-secondary/50 rounded-md p-3">
+														<div className="space-y-2">
+															{phoneNumbers.map((phone) => (
+																<div 
+																	key={phone.id || phone.displayPhoneNumber} 
+																	className="flex items-center justify-between border-b border-border/30 pb-2 last:border-0 last:pb-0"
+																>
+																	<div className="flex items-center space-x-2">
+																		<span className="text-sm font-medium">{phone.displayPhoneNumber}</span>
+																		{phone.qualityRating && (
+																			<Badge 
+																				variant={
+																					phone.qualityRating === 'GREEN' 
+																						? 'default' 
+																						: phone.qualityRating === 'YELLOW' 
+																						? 'secondary' 
+																						: 'destructive'
+																				}
+																				className="text-xs"
+																			>
+																				{phone.qualityRating}
+																			</Badge>
+																		)}
+																	</div>
+																	<Badge 
+																		variant={phone.status === 'CONNECTED' ? 'outline' : 'secondary'}
+																		className="text-xs"
 																	>
-																		{
-																			phoneNumber.display_phone_number
-																		}
-																	</SelectItem>
-																))}
-															</>
-														)}
-													</SelectContent>
-												</Select>
-											</CardContent>
-										</Card>
+																		{phone.status || 'UNKNOWN'}
+																	</Badge>
+																</div>
+															))}
+														</div>
+													</div>
+												) : (
+													<div className="bg-secondary/50 rounded-md p-6 flex flex-col items-center justify-center text-center">
+														<PhoneIcon className="h-8 w-8 text-muted-foreground mb-2" />
+														<p className="text-sm text-muted-foreground">No phone numbers found</p>
+														<p className="text-xs text-muted-foreground mt-1">
+															Click "Sync Phone Numbers" to fetch numbers from your WhatsApp Business Account
+														</p>
+													</div>
+												)}
+											</div>
+										)}
 									</div>
 								) : tab.slug === SettingTabEnum.Account ? (
 									<div className="mr-auto flex max-w-4xl flex-col gap-5">
@@ -2036,9 +2087,7 @@ export default function SettingsPage() {
 																											)
 																											.catch(
 																												error =>
-																													console.error(
-																														error
-																													)
+																													console.error(error)
 																											)
 																									}
 

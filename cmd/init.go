@@ -21,7 +21,7 @@ func initConstants() *interfaces.Constants {
 	var c interfaces.Constants
 
 	if err := koa.Unmarshal("app", &c); err != nil {
-		logger.Error("error loading app config: %v", err.Error(), nil)
+		logger.Error("error loading app config", "error", err.Error())
 	}
 
 	if koa.String("environment") == "development" {
@@ -61,11 +61,11 @@ func initFlags() {
 	// f.Bool("db-apply", false, "apply database migrations")
 
 	if err := f.Parse(os.Args[1:]); err != nil {
-		logger.Error("error loading flags: %v", err)
+		logger.Error("error loading flags", "error", err)
 	}
 
 	if err := koa.Load(posflag.Provider(f, ".", koa), nil); err != nil {
-		logger.Error("error loading config: %v", err)
+		logger.Error("error loading config", "error", err)
 	}
 }
 
@@ -75,10 +75,10 @@ func loadConfigFiles(filePaths []string, koa *koanf.Koanf) {
 			if os.IsNotExist(err) {
 				logger.Error("config file not found. If there isn't one yet, run --config to generate one.")
 			}
-			logger.Error("error loading config from file: %v.", err)
+			logger.Error("error loading config from file", "error", err)
 		}
-		logger.Info("loaded config file.")
-		logger.Debug("loaded config file: %s", "filePath", filePath)
+		logger.Info("loaded config file")
+		logger.Debug("loaded config file", "filePath", filePath)
 	}
 }
 
