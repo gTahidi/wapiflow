@@ -3,6 +3,7 @@ package conversation_controller
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -733,10 +734,16 @@ func handleSendMessage(context interfaces.ContextWithSession) error {
 				return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 			}
 
-			var jsonResponse map[string]interface{}
-			err = json.Unmarshal([]byte(response), &jsonResponse)
+			// Convert response to JSON bytes
+			responseBytes, err := json.Marshal(response)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+			}
 
-			fmt.Println("response: %v", jsonResponse)
+			var jsonResponse map[string]interface{}
+			err = json.Unmarshal(responseBytes, &jsonResponse)
+
+			fmt.Printf("response: %v\n", jsonResponse)
 
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -744,7 +751,7 @@ func handleSendMessage(context interfaces.ContextWithSession) error {
 
 			whatsappMessageId = jsonResponse["messages"].([]interface{})[0].(map[string]interface{})["id"].(string)
 
-			context.App.Logger.Info("response: %v", response, nil)
+			context.App.Logger.Info("message sent successfully", "response", slog.AnyValue(response))
 		}
 	}
 

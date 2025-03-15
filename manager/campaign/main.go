@@ -398,7 +398,7 @@ func (cm *CampaignManager) processMessageQueue() {
 			err := cm.sendMessage(message)
 			// // ! TODO: send an update to the websocket server, updating the count of messages sent for the campaign
 			if err != nil {
-				cm.Logger.Error("error sending message to user", err.Error())
+				cm.Logger.Error("error sending message to user", "error", err.Error())
 				// ! TODO: broadcast this message to websocket via the API server event
 			}
 		}
@@ -519,7 +519,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 					}
 					templateMessage.AddHeader(wapiComponents.TemplateMessageComponentHeaderType{
 						Type:       wapiComponents.TemplateMessageComponentTypeHeader,
-						Parameters: headerParameters,
+						Parameters: &headerParameters,
 					})
 				} else if component.Format == "IMAGE" {
 					headerParameters := []wapiComponents.TemplateMessageParameter{}
@@ -533,7 +533,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 					}
 					templateMessage.AddHeader(wapiComponents.TemplateMessageComponentHeaderType{
 						Type:       wapiComponents.TemplateMessageComponentTypeHeader,
-						Parameters: headerParameters,
+						Parameters: &headerParameters,
 					})
 
 					// ! TODO: use header handle
@@ -553,7 +553,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 					}
 					templateMessage.AddHeader(wapiComponents.TemplateMessageComponentHeaderType{
 						Type:       wapiComponents.TemplateMessageComponentTypeHeader,
-						Parameters: headerParameters,
+						Parameters: &headerParameters,
 					})
 
 				} else if component.Format == "DOCUMENT" {
@@ -568,7 +568,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 					}
 					templateMessage.AddHeader(wapiComponents.TemplateMessageComponentHeaderType{
 						Type:       wapiComponents.TemplateMessageComponentTypeHeader,
-						Parameters: headerParameters,
+						Parameters: &headerParameters,
 					})
 				} else if component.Format == "LOCATION" {
 
@@ -585,7 +585,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 					// }
 					// templateMessage.AddHeader(wapiComponents.TemplateMessageComponentHeaderType{
 					// 	Type:       wapiComponents.TemplateMessageComponentTypeHeader,
-					// 	Parameters: headerParameters,
+					// 	Parameters: &headerParameters,
 					// })
 				}
 
@@ -601,7 +601,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 								Type:    wapiComponents.TemplateMessageComponentTypeButton,
 								SubType: wapiComponents.TemplateMessageButtonComponentTypeUrl,
 								Index:   index,
-								Parameters: []wapiComponents.TemplateMessageParameter{
+								Parameters: &[]wapiComponents.TemplateMessageParameter{
 									wapiComponents.TemplateMessageButtonParameter{
 										Type: wapiComponents.TemplateMessageButtonParameterTypeText,
 										Text: parameterStoredInDb.Buttons[index],
@@ -614,7 +614,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 								Type:    wapiComponents.TemplateMessageComponentTypeButton,
 								Index:   index,
 								SubType: wapiComponents.TemplateMessageButtonComponentTypeQuickReply,
-								Parameters: []wapiComponents.TemplateMessageParameter{
+								Parameters: &[]wapiComponents.TemplateMessageParameter{
 									wapiComponents.TemplateMessageButtonParameter{
 										Type:    wapiComponents.TemplateMessageButtonParameterTypePayload,
 										Payload: parameterStoredInDb.Buttons[index],
@@ -645,7 +645,7 @@ func (cm *CampaignManager) sendMessage(message *CampaignMessage) error {
 	fmt.Println("response", response)
 
 	if err != nil {
-		fmt.Errorf("error sending message to user: %v", err.Error())
+		cm.Logger.Error("error sending message to user", "error", err.Error())
 		message.Campaign.ErrorCount.Add(1)
 		return err
 	}

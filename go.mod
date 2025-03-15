@@ -27,7 +27,7 @@ require (
 	github.com/paulbellamy/ratecounter v0.2.0
 	github.com/spf13/pflag v1.0.5
 	github.com/tmc/langchaingo v0.1.12
-	github.com/wapikit/wapi.go v0.0.15
+	github.com/wapikit/wapi.go v0.1.3
 	golang.org/x/crypto v0.29.0
 )
 

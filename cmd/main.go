@@ -24,7 +24,7 @@ import (
 // 2. --migrate to apply the migration to the database
 // 3. --config to setup the config files
 // 4. --version to check the version of the application running
-// 5. --help to check the
+// 5. --help to check the available flags
 
 var (
 	// Global variables
